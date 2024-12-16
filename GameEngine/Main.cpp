@@ -141,3 +141,114 @@ inline Mat4 Mat4LookAt(const Vec3& eye, const Vec3& target, const Vec3& up)
 	
 }
 
+// Dreiecksstruktur
+
+struct Triangle
+{
+	Vec3 v0, v1, v2;
+	uint32_t color;
+};
+
+// Einfache Würfel-Vertices
+static Vec3 cubeVerts[] =
+{
+	{-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, // Hinten
+	{-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {-0.5f,0.5f,0.5f}
+};
+
+static uint16_t cubeIndices[] =
+{
+	// Rückseite
+	0,1,2,  0,2,3,
+	// Vorderseite
+	4,5,6, 4,6,7,
+	// Links
+	0,4,7, 0,7,3,
+	// Rechts
+	1,5,6, 1,6,2,
+	// Oben
+	3,2,6, 3,6,7,
+	//Unten
+	0,1,5, 0,5,6
+};
+
+// Hilfsfunktionen für Rasterierung
+inline void ClearScreen(uint32_t color)
+{
+	fill(g_PixelBuffer.begin(), g_PixelBuffer.end(), color);
+	fill(g_ZBuffer.begin(), g_ZBuffer.end(), 1.0f);
+}
+
+inline void PutPixel(int x, int y, float z, uint32_t color)
+{
+	if (x < 0 || x >= g_Width || y < 0 || y >= g_Height) return;
+	int idx = y * g_Width + x;
+
+	if (z < g_ZBuffer[idx])
+	{
+		g_ZBuffer[idx] = z;
+		g_PixelBuffer[idx] = color;
+	}
+}
+
+struct Vertex
+{
+	Vec3 pos;
+};
+
+inline void DrawTriangle(Vertex v0, Vertex v1, Vertex v2, uint32_t color)
+{
+	// Für Einfachheit: Screen-Space-Koords annehmen
+	// Einfache bounding-box Rasterisierung
+	float minX = fminf(fminf(v0.pos.x, v1.pos.x), v2.pos.x);
+	float maxX = fmaxf(fmax(v0.pos.x, v1.pos.x), v2.pos.x);
+	float minY = fminf(fminf(v0.pos.y, v1.pos.y), v2.pos.y);
+	float maxY = fmaxf(fmaxf(v0.pos.y, v1.pos.y), v2.pos.y);
+
+	// Baryzentrische Koordinaten
+	auto EdgeFunction = [](const Vec3& a, const Vec3& b, const Vec3& c)
+		{
+			return (c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x);
+		};
+
+	Vec3 A = v0.pos;
+	Vec3 B = v1.pos;
+	Vec3 C = v2.pos;
+
+	float area = EdgeFunction(A, B, C);
+	if (area == 0) return;
+
+	for (int py = (int)ceilf(minY); py <= (int)floorf(maxY); py++)
+	{
+		for (int px = (int)ceilf(minX); px <= (int)floorf(maxX); px++)
+		{
+			Vec3 P = { (float)px + 0.5f, (float)py + 0.5f, 0.0f };
+
+			float w0 = EdgeFunction(B, C, P);
+			float w1 = EdgeFunction(C, A, P);
+			float w2 = EdgeFunction(A, B, P);
+
+			if (w0 >= 0 && w1 >= 0 && w2 >= 0)
+			{
+				w0 /= area;
+				w1 /= area;
+				w2 /= area;
+
+				float z = v0.pos.z * w0 + v1.pos.z * w1 + v2.pos.z * w2;
+				PutPixel(px, py, z, color);
+			}
+		}
+	}
+}
+
+// Konvertiert Normalisierte-Geräte-Koords in Pixel-Koords
+inline Vec3 NDCToScreen(const Vec3& v)
+{
+	Vec3 res;
+	res.x = (v.x * 0.5f + 0.5f) * g_Width;
+	res.y = (-(v.y * 0.5f) + 0.5f) * g_Height;
+	res.z = v.z;
+	return res;
+}
+
+
